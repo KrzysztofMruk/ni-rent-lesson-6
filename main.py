@@ -1,3 +1,5 @@
+import sys
+
 from src.manager import Manager
 from src.models import Parameters
 
@@ -64,10 +66,43 @@ def display_tenants(manager):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 4:
+        print('Użycie: python main.py <klucz_mieszkania> <rok> <miesiąc>')
+        print('Przykład: python main.py apart-polanka 2024 1')
+        sys.exit(1)
+
+    apartment_key = sys.argv[1]
+    try:
+        year = int(sys.argv[2])
+        month = int(sys.argv[3])
+    except ValueError:
+        print('Błąd: rok i miesiąc muszą być liczbami całkowitymi.')
+        sys.exit(1)
+
     parameters = Parameters()
     manager = Manager(parameters)
 
-    display_apartments(manager)
-    display_tenants(manager)
-    
-    print(f"\n{'=' * 70}\n")
+    try:
+        report = manager.get_financial_report(apartment_key, year, month)
+    except ValueError as error:
+        print(f'Błąd: {error}')
+        sys.exit(1)
+
+    if report is None:
+        print(f'Nie znaleziono mieszkania o kluczu: {apartment_key}')
+        sys.exit(1)
+
+    print_section_header(f"ROZLICZENIE: {apartment_key} — {month}/{year}")
+    print(f"Koszty mieszkania: {format_currency(report['total_costs_pln'])}")
+    print(f"Wpłaty lokatorów: {format_currency(report['total_transfers_pln'])}")
+    print(f"Saldo (wpłaty - koszty): {format_currency(report['balance_pln'])}")
+
+    if report['tenants']:
+        print_subsection_header('Rozliczenie lokatorów')
+        for tenant in report['tenants']:
+            print(f"{tenant['name']} ({tenant['tenant']}): "
+                  f"należność {format_currency(tenant['total_due_pln'])}, "
+                  f"wpłaty {format_currency(tenant['total_transfers_pln'])}, "
+                  f"saldo {format_currency(tenant['balance_pln'])}")
+    else:
+        print('Brak lokatorów przypisanych do mieszkania.')

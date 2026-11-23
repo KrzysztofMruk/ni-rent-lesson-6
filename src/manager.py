@@ -1,5 +1,5 @@
 from src.models import Apartment, Bill, Parameters, Tenant, TenantSettlement, Transfer, ApartmentSettlement
-from typing import List, Tuple
+from typing import List
 
 class Manager:
     def __init__(self, parameters: Parameters):
@@ -70,5 +70,71 @@ class Manager:
                 total_due_pln=apartment_settlement.total_due_pln / len(tenants_in_apartment)
             )
         for tenant in tenants_in_apartment ] 
+
+    def get_financial_report(self, apartment_key: str, year: int, month: int) -> dict | None:
+        """Return a period report with costs, tenant payments, and outstanding balances."""
+        apartment_settlement = self.get_settlement(apartment_key, year, month)
+        if apartment_settlement is None:
+            return None
+
+        tenant_settlements = self.create_tenants_settlements(apartment_settlement)
+        if tenant_settlements is None:
+            return None
+
+        tenants_by_name = {
+            tenant.name: (tenant_key, tenant)
+            for tenant_key, tenant in self.tenants.items()
+            if tenant.apartment == apartment_key
+        }
+        tenant_report = []
+        for settlement in tenant_settlements:
+            tenant_key, _ = tenants_by_name[settlement.tenant]
+            payments = sum(
+                transfer.amount_pln
+                for transfer in self.transfers
+                if transfer.tenant == tenant_key
+                and transfer.settlement_year == year
+                and transfer.settlement_month == month
+            )
+            tenant_report.append({
+                "tenant": tenant_key,
+                "name": settlement.tenant,
+                "total_due_pln": settlement.total_due_pln,
+                "total_transfers_pln": payments,
+                "balance_pln": payments - settlement.total_due_pln,
+            })
+
+        total_transfers = sum(item["total_transfers_pln"] for item in tenant_report)
+        return {
+            "apartment": apartment_key,
+            "year": year,
+            "month": month,
+            "total_costs_pln": apartment_settlement.total_due_pln,
+            "total_transfers_pln": total_transfers,
+            "balance_pln": total_transfers - apartment_settlement.total_due_pln,
+            "tenants": tenant_report,
+        }
+
+    def get_debtors(self, apartment_key: str, month: int, year: int) -> List[Tenant] | None:
+        """Return apartment tenants whose period transfers are below their rent."""
+        if month < 1 or month > 12:
+            raise ValueError("Month must be between 1 and 12")
+        if apartment_key not in self.apartments:
+            return None
+
+        debtors = []
+        for tenant_key, tenant in self.tenants.items():
+            if tenant.apartment != apartment_key:
+                continue
+            payments = sum(
+                transfer.amount_pln
+                for transfer in self.transfers
+                if transfer.tenant == tenant_key
+                and transfer.settlement_month == month
+                and transfer.settlement_year == year
+            )
+            if payments < tenant.rent_pln:
+                debtors.append(tenant)
+        return debtors
     
     
